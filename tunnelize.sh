@@ -1,54 +1,64 @@
 #!/usr/bin/env bash
 
 function usage {
+  bright="[37;1m"
+  reset="[0m"
   cat <<EOF
 
-  Usage: tunnelize [-p|--provision] [-e|--tls-email=email] user@host <expr> [<expr>] ...
+${bright}tunnelize${reset}
 
-Makes HTTP services bound to local ports, common in web development environments
-accessible on the internet through a remote server, like a cheap vps that costs you 2$.
+Makes HTTP services bound to local ports, common in web development environments accessible on the
+internet through a remote server, like a cheap vps that costs you 2$ per month. This allows you to
+expose your server so that your web site or service can be accessed by colleagues, or receive
+webhooks calls. Essentially, an open-soruce self-hosted alternative to services like ngrok and
+serveo which have limited free usage.
 
-Essentially, a self-hosted alternative to services like ngrok and serveo which have
-limited free usage.
+tunnelize runs an instance of Caddy server on the remote server and uses the reverse port-forwarding
+feature of the OpenSSH SSH Client to pipe connections from caddy to your locally-running service.
 
-tunnelize runs an instance of Caddyproxy on the remote server and uses the reverse
-port-forwarding feature of the OpenSSH SSH Client to pipe connections from
-Caddyproxy to your locally-running service.
+Thanks to Caddy server's awesome TLS features, certificate generation is done automatically through
+Let's Encrypt. You can specify the email address that will be present in the TLS certificate,
+although this is optional.
 
-Thanks to Caddyproxy's awesome TLS features, certificate generation is done
-automatically through Let's Encrypt. You can specify the email address that will
-be present in the TLS certificate, although this is optional.
+${bright}Usage: tunnelize [-e|--tls-email=email] user@host <expr> [<expr>] ...${reset}
 
-<expr> is of the following form:
-
-  <local_url>@<remote_vhost>
+<expr> is of the form: <local_url>@<remote_vhost>
 
 Usage examples:
-  expese --tls-email me@myhost.com myuser@myhost.com \
-    localhost:8080@frontend.expose.myhost.com \
+  tunnelize --tls-email me@myhost.com myuser@myhost.com \\
+    localhost:8080@frontend.expose.myhost.com \\
     localhost:3000@backend.expose.myhost.com
 
-This means tunnelize will have Caddy pipe connections from the given remote host
-to the local running service bound to localhost:6000. The remote host will listen
-on https and http (which redirects to https).
+tunnelize will have Caddy pipe connections from the given remote host to the local running service
+bound to localhost:6000. The remote host will listen on https and http (which redirects to https).
+The https certificate will be associated with the given email address.
 
-There is no limit to the number of forwards you can specify. This can be useful
-to either give remote access to your local development environment, or to receive
-webhook callbacks from any service you are integrating.
+${bright}Setting up the remote server$reset
 
+The remote server needs to have Caddy server installed on it, available through the
+caddy command. See the caddy server website on https://caddyserver.com/ for
+installation instructions. As of the time of writing, this is a manual process.
 
-  Provisioning
+The caddy command will also need the special capability to bind to ports 80 and 443,
+unless you want to run the remote server as root, which is generally not advisable.
+This can be done via the following command, as root:
 
-The remote host needs to be provisioned with an installation of Caddyproxy,
-and, since you probably don't want to run the remote webserver as root,
-to give it the capability to bound to lower ports 80 and 443. This can be done
-either manually by the user, or automatically through the --provision switch.
+  # setcap 'cap_net_bind_service=+ep' /usr/local/bin/caddy
 
+Please mind that the location of the caddy command on your system may vary.
 EOF
 }
 
-function provision {
-  echo "omg prov"
+function error {
+  echo "Error: $*" 1>&2
+  exit 1
+}
+
+function test_setup {
+  caddy -v > /dev/null 2>&1
+  if [ $? == 127 ]; then
+    error "caddy command not available on the remote server"
+  fi
 }
 
 function ssh_connect {
@@ -75,13 +85,12 @@ function ssh_connect {
       caddy_config="$caddy_config"$'\n'"$(parse_caddy_tmpl "$remote_vhost" "$tls_email" "${remote_ports[-1]}")"$'\n'
       reverse_proxies+=("-R ${remote_ports[-1]}:$local_url")
     else
-      echo "Unknown <expr>: $forward"
-      echo "See usage"
+      error "Unknown <expr>: $forward"
       exit 1
     fi
   done
 
-  ssh -t -t "${reverse_proxies[@]}" "$host"  "caddy -agree -conf <(echo '$caddy_config')"
+  ssh -t -t "${reverse_proxies[@]}" "$host"  "$(typeset -f test_setup error) && test_setup && caddy -agree -conf <(echo '$caddy_config')"
 }
 
 
@@ -114,9 +123,9 @@ fi
 forwards=()
 while (( "$#" )); do
   case "$1" in
-    -p|--provision)
-      provision=1
-      shift
+    -h|--help)
+      usage
+      exit 0
       ;;
     -e|--tls-email)
       tls_email=$2
@@ -127,8 +136,7 @@ while (( "$#" )); do
       break
       ;;
     --*|-*)
-      echo "Error: Unsupported flag $1" >&2
-      exit 1
+      error "Unsupported flag $1" >&2
       ;;
     *)
       if [[ -z $host ]]; then
@@ -141,17 +149,4 @@ while (( "$#" )); do
   esac
 done
 
-if [[ "$provision" == "1" ]]; then
-  if [[ -z $host ]]; then
-    echo "Error: --provision requires user@host"
-    exit 1
-  fi
-
-  echo "Provisioning $host"
-  provision "$host"
-  exit 0
-fi
-
 ssh_connect "$remote_vhost" "$tls_email" "$remote_port" "${forwards[@]}"
-
-
