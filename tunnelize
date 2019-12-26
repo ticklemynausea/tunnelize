@@ -46,6 +46,11 @@ This can be done via the following command, as root:
   # setcap 'cap_net_bind_service=+ep' /usr/local/bin/caddy
 
 Please mind that the location of the caddy command on your system may vary.
+
+A domain name is also required so that your services can be properly exposed under a domain name. It
+is recommended that you create a wildcard A/AAAA record under a subdomain so that you can easily
+create exposed services on the fly. The usage example given would assume that such a DNS record
+exists for *.expose.myhost.com, pointing to the remote host's IP address.
 EOF
 }
 

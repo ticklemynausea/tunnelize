@@ -24,10 +24,14 @@ tunnelize --tls-email me@myhost.com myuser@myhost.com \
 
 The remote server needs to have Caddy server installed on it, available through the caddy command. See the caddy server website on https://caddyserver.com/ for installation instructions. As of the time of writing, this is a manual process.
 
-The caddy command will also need the special capability to bind to ports 80 and 443, unless you want to run the remote server as root, which is generally not advisable.  This can be done via the following command, as root:
+The caddy command will also need the special capability to bind to ports 80 and 443, unless you want to run the remote server as root, which is generally not advisable. This can be done via the following command, as root:
 
 ```
 # setcap 'cap_net_bind_service=+ep' /usr/local/bin/caddy
 ```
 
 Please mind that the location of the caddy command on your system may vary.
+
+### DNS
+
+A domain name is also required so that your services can be properly exposed under a domain name. It is recommended that you create a wildcard A/AAAA record under a subdomain so that you can easily create exposed services on the fly. The usage example given would assume that such a DNS record exists for `*.expose.myhost.com`, pointing to the remote host's IP address.
